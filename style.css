@@ -294,6 +294,20 @@ textarea.form-input {
   color: #16a34a;
 }
 
+/* ===== Toast notification ===== */
+#toast {
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+#toast.hidden {
+  display: none !important;
+}
+
+/* NL preview box */
+#exp-nl-preview, #todo-nl-preview {
+  transition: all 0.15s ease;
+}
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
