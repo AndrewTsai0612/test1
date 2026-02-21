@@ -32,6 +32,204 @@ const Storage = {
 };
 
 // ──────────────────────────────────────────────────────────────
+//  NLParser  — rule-based natural language parser (no AI)
+// ──────────────────────────────────────────────────────────────
+const NLParser = {
+  _weekdayMap: { '日':0, '天':0, '一':1, '二':2, '三':3, '四':4, '五':5, '六':6 },
+
+  // Returns { date: 'YYYY-MM-DD', matched: string|null }
+  parseDate(text) {
+    const today = dayjs();
+
+    const simpleOffsets = {
+      '大前天': -3, '前天': -2, '昨天': -1, '昨日': -1,
+      '今天': 0, '今日': 0, '今': 0,
+      '明天': 1, '明日': 1, '後天': 2,
+    };
+    for (const [kw, offset] of Object.entries(simpleOffsets)) {
+      if (text.includes(kw)) {
+        return { date: today.add(offset, 'day').format('YYYY-MM-DD'), matched: kw };
+      }
+    }
+
+    // 上週X / 上個禮拜X
+    const lastWeekRe = /上(?:個)?(?:週|星期|禮拜)([一二三四五六日天])/;
+    const lwm = text.match(lastWeekRe);
+    if (lwm) {
+      const wd = this._weekdayMap[lwm[1]] ?? -1;
+      if (wd !== -1) {
+        return { date: today.subtract(1, 'week').day(wd).format('YYYY-MM-DD'), matched: lwm[0] };
+      }
+    }
+
+    // 這週X / 本週X
+    const thisWeekRe = /(?:這|本)(?:週|星期|禮拜)([一二三四五六日天])/;
+    const twm = text.match(thisWeekRe);
+    if (twm) {
+      const wd = this._weekdayMap[twm[1]] ?? -1;
+      if (wd !== -1) {
+        return { date: today.day(wd).format('YYYY-MM-DD'), matched: twm[0] };
+      }
+    }
+
+    // 下週X
+    const nextWeekRe = /下(?:個)?(?:週|星期|禮拜)([一二三四五六日天])/;
+    const nwm = text.match(nextWeekRe);
+    if (nwm) {
+      const wd = this._weekdayMap[nwm[1]] ?? -1;
+      if (wd !== -1) {
+        return { date: today.add(1, 'week').day(wd).format('YYYY-MM-DD'), matched: nwm[0] };
+      }
+    }
+
+    // X月X日 / X月X號
+    const mdRe = /(\d{1,2})月(\d{1,2})[日號]?/;
+    const mdm = text.match(mdRe);
+    if (mdm) {
+      const m = String(parseInt(mdm[1])).padStart(2, '0');
+      const d = String(parseInt(mdm[2])).padStart(2, '0');
+      let yr = today.year();
+      const candidate = dayjs(`${yr}-${m}-${d}`);
+      if (candidate.isAfter(today.add(2, 'month'))) yr -= 1;
+      return { date: `${yr}-${m}-${d}`, matched: mdm[0] };
+    }
+
+    // X/X (month/day shorthand, avoid time like 14:30)
+    const slashRe = /(\d{1,2})\/(\d{1,2})(?!\d*:)/;
+    const slm = text.match(slashRe);
+    if (slm) {
+      const mo = parseInt(slm[1]); const dy = parseInt(slm[2]);
+      if (mo >= 1 && mo <= 12 && dy >= 1 && dy <= 31) {
+        const m = String(mo).padStart(2,'0'); const d = String(dy).padStart(2,'0');
+        let yr = today.year();
+        const candidate = dayjs(`${yr}-${m}-${d}`);
+        if (candidate.isAfter(today.add(2, 'month'))) yr -= 1;
+        return { date: `${yr}-${m}-${d}`, matched: slm[0] };
+      }
+    }
+
+    return { date: today.format('YYYY-MM-DD'), matched: null };
+  },
+
+  parseExpense(text) {
+    if (!text || !text.trim()) return null;
+
+    // Extract amount: prefer number + currency word, else NT$/$ + number, else bare number
+    let amount = null;
+    let amountMatched = null;
+
+    const withWordRe = /(\d+(?:\.\d{1,2})?)\s*(?:元|塊|块|円)/;
+    const withSymRe  = /(?:NT\$|\$)(\d+(?:\.\d{1,2})?)/;
+    const bareNumRe  = /(\d+(?:\.\d{1,2})?)/g;
+
+    const ww = text.match(withWordRe);
+    const ws = text.match(withSymRe);
+
+    if (ww) {
+      amount = parseFloat(ww[1]); amountMatched = ww[0];
+    } else if (ws) {
+      amount = parseFloat(ws[1]); amountMatched = ws[0];
+    } else {
+      // Take the largest bare number as amount (avoids confusion with "3份" etc.)
+      let largest = 0;
+      let m;
+      while ((m = bareNumRe.exec(text)) !== null) {
+        const n = parseFloat(m[1]);
+        if (n > largest) { largest = n; amountMatched = m[0]; }
+      }
+      if (largest > 0) amount = largest;
+    }
+
+    if (!amount || amount <= 0) return null;
+
+    // Detect type
+    let type = 'expense';
+    const incKws = ['收到','收入','薪水','薪資','工資','月薪','獎金','紅利','退款','退稅','利息','股息','分紅','賺','領到','入帳'];
+    for (const kw of incKws) {
+      if (text.includes(kw)) { type = 'income'; break; }
+    }
+
+    // Parse date
+    const { date, matched: dateMatched } = this.parseDate(text);
+
+    // Detect category
+    const category = type === 'income'
+      ? this._detectIncomeCategory(text)
+      : this._detectExpenseCategory(text);
+
+    // Build note: strip amount, date marker, common action words
+    let note = text;
+    if (amountMatched) note = note.replace(amountMatched, '');
+    if (dateMatched)   note = note.replace(dateMatched, '');
+    note = note
+      .replace(/花了?|付了?|買了?|收到|消費了?|花費了?|支出了?|領到|賺了?|支付了?/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return { amount, type, category, date, note };
+  },
+
+  _detectExpenseCategory(text) {
+    const t = text.toLowerCase();
+    const rules = [
+      { cat: '餐飲',  kws: ['吃','喝','餐','飯','麵','便當','咖啡','奶茶','早餐','午餐','晚餐','宵夜','飲料','火鍋','炸雞','珍奶','滷味','蛋糕','麵包','壽司','拉麵','牛排','燒烤','甜點','下午茶','早午餐','點心'] },
+      { cat: '交通',  kws: ['捷運','公車','火車','高鐵','計程車','uber','油錢','停車','加油','機票','台鐵','高速','過路費','mrt','bus','腳踏車','gogoro','汽車'] },
+      { cat: '購物',  kws: ['衣服','鞋子','包包','手機','電腦','3c','超市','賣場','百貨','蝦皮','amazon','服飾','飾品','筆電','耳機','充電器','家電','傢俱','日用品'] },
+      { cat: '娛樂',  kws: ['電影','ktv','遊戲','音樂','演唱會','展覽','漫畫','netflix','spotify','youtube','夜店','酒吧','桌遊','密室','健身','游泳','電玩','livehouse','書'] },
+      { cat: '醫療',  kws: ['醫院','診所','藥局','藥','掛號','看診','牙醫','健保','保險','眼科','復健'] },
+      { cat: '住房',  kws: ['房租','水電','瓦斯','網路費','管理費','電費','水費','租金','寬頻','第四台'] },
+      { cat: '教育',  kws: ['補習','課程','學費','書本','教材','考試','證照','線上課'] },
+    ];
+    for (const { cat, kws } of rules) {
+      for (const kw of kws) {
+        if (t.includes(kw)) return cat;
+      }
+    }
+    return '其他';
+  },
+
+  _detectIncomeCategory(text) {
+    const t = text.toLowerCase();
+    const rules = [
+      { cat: '薪水',  kws: ['薪水','薪資','工資','月薪','底薪'] },
+      { cat: '兼職',  kws: ['兼職','打工','案子','接案','外快','freelance'] },
+      { cat: '投資',  kws: ['股票','基金','投資','利息','股息','分紅','配息'] },
+      { cat: '禮金',  kws: ['紅包','禮金','壓歲錢','獎金','獎勵','退款','退稅'] },
+    ];
+    for (const { cat, kws } of rules) {
+      for (const kw of kws) {
+        if (t.includes(kw)) return cat;
+      }
+    }
+    return '其他';
+  },
+
+  parseTodo(text) {
+    if (!text || !text.trim()) return null;
+
+    // Detect priority
+    let priority = 'medium';
+    if (/緊急|urgent|重要|ASAP|asap|馬上|立刻|今天要|今天必須/.test(text)) priority = 'high';
+    if (/有空|順便|不急|隨時|之後再/.test(text)) priority = 'low';
+
+    // Parse due date (only set dueDate if a date keyword was explicitly found)
+    const { date, matched: dateMatched } = this.parseDate(text);
+    const today = dayjs().format('YYYY-MM-DD');
+    const dueDate = dateMatched ? date : null;
+
+    // Clean text: remove date markers and priority noise
+    let cleanText = text;
+    if (dateMatched) cleanText = cleanText.replace(dateMatched, '').trim();
+    cleanText = cleanText
+      .replace(/緊急|重要|不急|有空|順便|隨時|之後再/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return { text: cleanText || text.trim(), priority, dueDate };
+  },
+};
+
+// ──────────────────────────────────────────────────────────────
 //  Modal  — single shared overlay
 // ──────────────────────────────────────────────────────────────
 const Modal = {
@@ -799,6 +997,14 @@ const App = {
   activeTab: 'expenses',
   _rendered: { expenses: false, todos: false, journal: false },
 
+  toast(msg, duration = 2500) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el.classList.add('hidden'), duration);
+  },
+
   init() {
     // Set header date
     document.getElementById('header-date').textContent = dayjs().format('YYYY年MM月DD日');
@@ -820,20 +1026,112 @@ const App = {
       Expenses.render();
     });
 
-    // Expense add button
+    // Expense add button (manual form)
     document.getElementById('exp-add-btn').addEventListener('click', () => Expenses.openForm(null));
 
-    // Todo add
-    document.getElementById('todo-add-btn').addEventListener('click', () => {
-      const input = document.getElementById('todo-input');
-      Todos.add(input.value);
-      input.value = '';
-    });
-    document.getElementById('todo-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        Todos.add(e.target.value);
-        e.target.value = '';
+    // NL expense input — real-time preview
+    document.getElementById('exp-nl-input').addEventListener('input', e => {
+      const text = e.target.value.trim();
+      const preview = document.getElementById('exp-nl-preview');
+      if (!text) { preview.classList.add('hidden'); return; }
+
+      const parsed = NLParser.parseExpense(text);
+      if (!parsed) {
+        preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-orange-50 text-orange-600';
+        preview.textContent = '⚠️ 無法識別金額，請在文字中包含數字';
+        preview.classList.remove('hidden');
+        return;
       }
+      const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
+      const sign = parsed.type === 'expense' ? '-' : '+';
+      const typeLabel = parsed.type === 'expense' ? '支出' : '收入';
+      preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700';
+      preview.innerHTML = `✓ ${icon} <strong>${parsed.category}</strong> ${typeLabel} <strong>${sign}$${parsed.amount}</strong> · ${parsed.date}${parsed.note ? ' · ' + parsed.note : ''}`;
+      preview.classList.remove('hidden');
+    });
+
+    // NL expense submit
+    const submitNLExpense = () => {
+      const input = document.getElementById('exp-nl-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const parsed = NLParser.parseExpense(text);
+      if (!parsed) {
+        App.toast('⚠️ 無法識別金額，請在文字中包含數字');
+        return;
+      }
+
+      Expenses.save({
+        id: Storage.genId('exp'),
+        type: parsed.type,
+        amount: parsed.amount,
+        category: parsed.category,
+        date: parsed.date,
+        note: parsed.note,
+        createdAt: Date.now(),
+      });
+
+      // Switch to the month of the saved record
+      const month = parsed.date.slice(0, 7);
+      if (month !== Expenses.state.month) Expenses.state.month = month;
+
+      Expenses.render();
+      input.value = '';
+      document.getElementById('exp-nl-preview').classList.add('hidden');
+
+      const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
+      const sign = parsed.type === 'expense' ? '-' : '+';
+      App.toast(`${icon} 已記帳！${sign}$${parsed.amount} · ${parsed.category}`);
+    };
+
+    document.getElementById('exp-nl-btn').addEventListener('click', submitNLExpense);
+    document.getElementById('exp-nl-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitNLExpense();
+    });
+
+    // Todo add with NL parsing
+    const submitTodo = () => {
+      const input = document.getElementById('todo-input');
+      const raw = input.value.trim();
+      if (!raw) return;
+
+      const parsed = NLParser.parseTodo(raw);
+      Todos.save({
+        id: Storage.genId('todo'),
+        text: parsed.text,
+        done: false,
+        priority: parsed.priority,
+        dueDate: parsed.dueDate,
+        createdAt: Date.now(),
+        completedAt: null,
+      });
+      Todos.render();
+      input.value = '';
+      document.getElementById('todo-nl-preview').classList.add('hidden');
+
+      const priLabel = { high: '🔴 高', medium: '🟡 中', low: '🟢 低' }[parsed.priority];
+      const dueTxt = parsed.dueDate ? ` · 到期 ${parsed.dueDate}` : '';
+      App.toast(`✅ 已新增：${parsed.text}${dueTxt} [${priLabel}]`);
+    };
+
+    document.getElementById('todo-add-btn').addEventListener('click', submitTodo);
+    document.getElementById('todo-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitTodo();
+    });
+
+    // Todo input real-time NL preview
+    document.getElementById('todo-input').addEventListener('input', e => {
+      const text = e.target.value.trim();
+      const preview = document.getElementById('todo-nl-preview');
+      if (!text) { preview.classList.add('hidden'); return; }
+      const parsed = NLParser.parseTodo(text);
+      if (!parsed) { preview.classList.add('hidden'); return; }
+      const priLabel = { high: '🔴 高優先', medium: '🟡 中優先', low: '🟢 低優先' }[parsed.priority];
+      const dueTxt = parsed.dueDate ? ` · 📅 ${parsed.dueDate}` : '';
+      preview.className = 'text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700';
+      preview.innerHTML = `✓ <strong>${parsed.text}</strong>${dueTxt} · ${priLabel}`;
+      preview.classList.remove('hidden');
     });
 
     // Todo filter pills
