@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生活助手</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#6366f1',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+  <div id="app" class="min-h-screen flex flex-col max-w-2xl mx-auto relative">
+
+    <!-- Header -->
+    <header class="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+      <div>
+        <h1 class="text-lg font-bold text-indigo-600">生活助手</h1>
+        <p id="header-date" class="text-xs text-gray-400"></p>
+      </div>
+      <div class="text-2xl">🌟</div>
+    </header>
+
+    <!-- Tab Nav (desktop: top, mobile: bottom) -->
+    <nav id="tab-nav" class="bg-white border-b hidden md:flex">
+      <button data-tab="expenses" class="tab-btn flex-1 py-3 text-sm font-medium flex flex-col items-center gap-1">
+        <span class="text-lg">💰</span>記帳
+      </button>
+      <button data-tab="todos" class="tab-btn flex-1 py-3 text-sm font-medium flex flex-col items-center gap-1">
+        <span class="text-lg">✅</span>代辦
+      </button>
+      <button data-tab="journal" class="tab-btn flex-1 py-3 text-sm font-medium flex flex-col items-center gap-1">
+        <span class="text-lg">📖</span>日記
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto pb-24 md:pb-4">
+
+      <!-- ===== 記帳 Section ===== -->
+      <section id="tab-expenses" class="p-4 space-y-4">
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-red-50 rounded-xl p-3 text-center">
+            <p class="text-xs text-red-400 font-medium">本月支出</p>
+            <p id="exp-total-expense" class="text-lg font-bold text-red-500 mt-1">$0</p>
+          </div>
+          <div class="bg-green-50 rounded-xl p-3 text-center">
+            <p class="text-xs text-green-500 font-medium">本月收入</p>
+            <p id="exp-total-income" class="text-lg font-bold text-green-600 mt-1">$0</p>
+          </div>
+          <div class="bg-indigo-50 rounded-xl p-3 text-center">
+            <p class="text-xs text-indigo-400 font-medium">淨額</p>
+            <p id="exp-net" class="text-lg font-bold text-indigo-600 mt-1">$0</p>
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="flex items-center justify-between">
+          <select id="exp-month-filter" class="text-sm border rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"></select>
+          <button id="exp-add-btn" class="bg-indigo-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-indigo-600 transition">+ 新增記帳</button>
+        </div>
+
+        <!-- Chart -->
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <p class="text-sm font-medium text-gray-600 mb-3">支出分類</p>
+          <div id="exp-chart-container" class="flex justify-center">
+            <canvas id="expense-chart" width="200" height="200" style="max-width:200px;max-height:200px;"></canvas>
+          </div>
+          <p id="exp-chart-empty" class="text-center text-gray-400 text-sm py-4 hidden">本月尚無支出記錄</p>
+        </div>
+
+        <!-- Transaction List -->
+        <div>
+          <p class="text-sm font-medium text-gray-500 mb-2">交易記錄</p>
+          <div id="exp-list" class="space-y-2"></div>
+          <div id="exp-empty" class="text-center py-10 hidden">
+            <p class="text-4xl mb-2">💰</p>
+            <p class="text-gray-400 text-sm">還沒有記帳記錄<br>點擊「新增記帳」開始吧！</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 代辦清單 Section ===== -->
+      <section id="tab-todos" class="p-4 space-y-4 hidden">
+
+        <!-- Filter Pills -->
+        <div id="todo-filters" class="flex gap-2">
+          <button data-filter="all" class="todo-filter-btn active text-sm px-3 py-1 rounded-full font-medium">全部</button>
+          <button data-filter="active" class="todo-filter-btn text-sm px-3 py-1 rounded-full font-medium">進行中</button>
+          <button data-filter="done" class="todo-filter-btn text-sm px-3 py-1 rounded-full font-medium">已完成</button>
+        </div>
+
+        <!-- Inline Add -->
+        <div class="flex gap-2">
+          <input id="todo-input" type="text" placeholder="輸入新代辦事項..." class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <button id="todo-add-btn" class="bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-600 transition">新增</button>
+        </div>
+
+        <!-- Todo List -->
+        <div id="todo-list" class="space-y-2"></div>
+        <div id="todo-empty" class="text-center py-10 hidden">
+          <p class="text-4xl mb-2">✅</p>
+          <p class="text-gray-400 text-sm">代辦清單是空的<br>新增你的第一個任務吧！</p>
+        </div>
+      </section>
+
+      <!-- ===== 日記 Section ===== -->
+      <section id="tab-journal" class="p-4 space-y-4 hidden">
+
+        <!-- Calendar Header -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b">
+            <button id="journal-prev-month" class="text-gray-400 hover:text-indigo-500 text-xl font-bold px-2">‹</button>
+            <span id="journal-month-label" class="font-semibold text-gray-700"></span>
+            <button id="journal-next-month" class="text-gray-400 hover:text-indigo-500 text-xl font-bold px-2">›</button>
+          </div>
+
+          <!-- Calendar Grid -->
+          <div class="px-3 pb-3">
+            <div class="grid grid-cols-7 text-center text-xs text-gray-400 py-2">
+              <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+            </div>
+            <div id="journal-calendar" class="grid grid-cols-7 gap-1"></div>
+          </div>
+        </div>
+
+        <!-- Entry for Selected Date -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <p id="journal-selected-label" class="text-sm font-medium text-gray-500"></p>
+            <button id="journal-write-btn" class="bg-indigo-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-indigo-600 transition">+ 寫日記</button>
+          </div>
+          <div id="journal-entry-area"></div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Mobile Bottom Tab Nav -->
+    <nav id="tab-nav-mobile" class="md:hidden fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t flex mobile-nav">
+      <button data-tab="expenses" class="tab-btn flex-1 py-2 text-xs font-medium flex flex-col items-center gap-0.5">
+        <span class="text-xl">💰</span>記帳
+      </button>
+      <button data-tab="todos" class="tab-btn flex-1 py-2 text-xs font-medium flex flex-col items-center gap-0.5">
+        <span class="text-xl">✅</span>代辦
+      </button>
+      <button data-tab="journal" class="tab-btn flex-1 py-2 text-xs font-medium flex flex-col items-center gap-0.5">
+        <span class="text-xl">📖</span>日記
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- ===== Modal ===== -->
+  <div id="modal-overlay" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end md:items-center justify-center">
+    <div id="modal-box" class="bg-white w-full max-w-lg rounded-t-2xl md:rounded-2xl modal-slide-up">
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <h2 id="modal-title" class="font-semibold text-gray-800"></h2>
+        <button id="modal-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="modal-body" class="px-5 py-4 max-h-[70vh] overflow-y-auto"></div>
+      <div class="px-5 pb-5 flex gap-3">
+        <button id="modal-delete" class="text-red-500 text-sm font-medium px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition hidden">刪除</button>
+        <div class="flex-1"></div>
+        <button id="modal-cancel" class="text-gray-500 text-sm font-medium px-4 py-2 rounded-lg border hover:bg-gray-50 transition">取消</button>
+        <button id="modal-submit" class="bg-indigo-500 text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-indigo-600 transition">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Todo Context Menu -->
+  <div id="todo-menu" class="fixed bg-white rounded-xl shadow-xl border z-50 hidden w-44">
+    <button id="tmenu-edit" class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl">✏️ 編輯</button>
+    <button id="tmenu-priority" class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50">🎯 設定優先級</button>
+    <button id="tmenu-due" class="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50">📅 設定到期日</button>
+    <button id="tmenu-delete" class="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 rounded-b-xl">🗑️ 刪除</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
