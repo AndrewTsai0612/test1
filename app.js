@@ -854,28 +854,35 @@ const App = {
     // Expense add button (manual form)
     document.getElementById('exp-add-btn').addEventListener('click', () => Expenses.openForm(null));
 
-    // NL expense input — real-time preview
+    // NL expense input — real-time preview with inline Edit button
     document.getElementById('exp-nl-input').addEventListener('input', e => {
       const text = e.target.value.trim();
       const preview = document.getElementById('exp-nl-preview');
-      if (!text) { preview.classList.add('hidden'); return; }
+      // Close confirm form whenever user is still typing
+      document.getElementById('exp-nl-confirm').classList.add('hidden');
+      if (!text) { preview.classList.add('hidden'); Expenses._lastNLParsed = null; return; }
 
       const parsed = NLExpense.parse(text);
       if (!parsed) {
         preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-orange-50 text-orange-600';
-        preview.textContent = '⚠️ 無法識別金額，請在文字中包含數字';
+        preview.innerHTML = '⚠️ 無法識別金額，請在文字中包含數字';
         preview.classList.remove('hidden');
+        Expenses._lastNLParsed = null;
         return;
       }
+      Expenses._lastNLParsed = parsed;
       const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
       const sign = parsed.type === 'expense' ? '-' : '+';
       const typeLabel = parsed.type === 'expense' ? '支出' : '收入';
-      preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700';
-      preview.innerHTML = `✓ ${icon} <strong>${parsed.category}</strong> ${typeLabel} <strong>${sign}$${parsed.amount}</strong> · ${parsed.date}${parsed.note ? ' · ' + parsed.note : ''}`;
+      preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700 flex items-center justify-between gap-2';
+      preview.innerHTML = `
+        <span>✓ ${icon} <strong>${parsed.category}</strong> ${typeLabel} <strong>${sign}$${parsed.amount}</strong> · ${parsed.date}${parsed.note ? ' · ' + parsed.note : ''}</span>
+        <button onclick="Expenses._showConfirmForm(Expenses._lastNLParsed)" class="shrink-0 border border-indigo-300 rounded-md px-2 py-0.5 hover:bg-indigo-100 transition-colors">編輯</button>
+      `;
       preview.classList.remove('hidden');
     });
 
-    // NL expense submit — shows confirm form instead of saving immediately
+    // NL expense submit — saves directly (no confirm form needed unless user clicked 編輯)
     const submitNLExpense = () => {
       const input = document.getElementById('exp-nl-input');
       const text = input.value.trim();
@@ -887,8 +894,24 @@ const App = {
         return;
       }
 
-      Expenses._showConfirmForm(parsed);
+      Expenses.save({
+        id: Storage.genId('exp'),
+        type: parsed.type, amount: parsed.amount, category: parsed.category,
+        date: parsed.date, note: parsed.note, createdAt: Date.now(),
+      });
+
+      const month = parsed.date.slice(0, 7);
+      if (month !== Expenses.state.month) Expenses.state.month = month;
+
+      Expenses.render();
+      input.value = '';
       document.getElementById('exp-nl-preview').classList.add('hidden');
+      document.getElementById('exp-nl-confirm').classList.add('hidden');
+      Expenses._lastNLParsed = null;
+
+      const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
+      const sign = parsed.type === 'expense' ? '-' : '+';
+      App.toast(`${icon} 已記帳！${sign}$${parsed.amount} · ${parsed.category}`);
     };
 
     document.getElementById('exp-nl-btn').addEventListener('click', submitNLExpense);
