@@ -915,6 +915,8 @@ const App = {
       if (/(\d+(?:\.\d+)?)\s*(?:元|塊|块|円)|(?:NT\$|\$)\s*\d+/.test(text)) return 'expense';
       if (/收到|薪水|薪資|工資|月薪|獎金|賺到?|領到|入帳/.test(text)) return 'expense';
       if (/花了?|付了?|消費了?|花費了?/.test(text) && /\d/.test(text)) return 'expense';
+      // Spending-context keywords + a number → treat as expense (e.g. "午餐100")
+      if (/吃|喝|餐|飯|麵|便當|咖啡|奶茶|飲料|早餐|午餐|晚餐|宵夜|早午餐|甜點|下午茶|點心|火鍋|炸雞|珍奶|蛋糕|麵包|壽司|拉麵|牛排|燒烤|超市|賣場|加油|停車|捷運|公車|計程車|電影|買/.test(text) && /\d/.test(text)) return 'expense';
       return 'todo';
     };
 
