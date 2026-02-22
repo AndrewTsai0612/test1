@@ -33,8 +33,8 @@
       <div class="text-2xl">🌟</div>
     </header>
 
-    <!-- Tab Nav (desktop: top, mobile: bottom) -->
-    <nav id="tab-nav" class="bg-white border-b hidden md:flex">
+    <!-- Tab Nav (desktop: top — hidden, navigation is always at the bottom) -->
+    <nav id="tab-nav" class="hidden">
       <button data-tab="home" class="tab-btn flex-1 py-3 text-sm font-medium flex flex-col items-center gap-1">
         <span class="text-lg">🏠</span>總覽
       </button>
@@ -50,7 +50,7 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="flex-1 overflow-y-auto pb-24 md:pb-4">
+    <main class="flex-1 overflow-y-auto pb-24">
 
       <!-- ===== Shared NL Input (always visible, works for all tabs) ===== -->
       <div class="px-4 pt-4 space-y-3">
@@ -256,8 +256,8 @@
 
     </main>
 
-    <!-- Mobile Bottom Tab Nav -->
-    <nav id="tab-nav-mobile" class="md:hidden fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t flex mobile-nav">
+    <!-- Bottom Tab Nav (always visible) -->
+    <nav id="tab-nav-mobile" class="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t flex mobile-nav">
       <button data-tab="home" class="tab-btn flex-1 py-2 text-xs font-medium flex flex-col items-center gap-0.5">
         <span class="text-xl">🏠</span>總覽
       </button>
