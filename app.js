@@ -909,77 +909,103 @@ const App = {
     // Expense add button (manual form)
     document.getElementById('exp-add-btn').addEventListener('click', () => Expenses.openForm(null));
 
-    // NL expense input — real-time preview with inline Edit button
-    document.getElementById('exp-nl-input').addEventListener('input', e => {
+    // ── Shared NL input — handles both expenses and todos ─────────
+    // Detection: currency marker or strong expense keywords → expense; else → todo
+    const detectKind = text => {
+      if (/(\d+(?:\.\d+)?)\s*(?:元|塊|块|円)|(?:NT\$|\$)\s*\d+/.test(text)) return 'expense';
+      if (/收到|薪水|薪資|工資|月薪|獎金|賺到?|領到|入帳/.test(text)) return 'expense';
+      if (/花了?|付了?|消費了?|花費了?/.test(text) && /\d/.test(text)) return 'expense';
+      return 'todo';
+    };
+
+    // Real-time preview
+    document.getElementById('shared-nl-input').addEventListener('input', e => {
       const text = e.target.value.trim();
-      const preview = document.getElementById('exp-nl-preview');
-      // Close confirm form whenever user is still typing
+      const preview = document.getElementById('shared-nl-preview');
       document.getElementById('exp-nl-confirm').classList.add('hidden');
       if (!text) { preview.classList.add('hidden'); Expenses._lastNLParsed = null; return; }
 
-      const parsed = NLExpense.parse(text);
-      if (!parsed) {
-        preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-orange-50 text-orange-600';
-        preview.innerHTML = '⚠️ 無法識別金額，請在文字中包含數字';
-        preview.classList.remove('hidden');
+      if (detectKind(text) === 'expense') {
+        const parsed = NLExpense.parse(text);
+        if (!parsed) {
+          preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-orange-50 text-orange-600';
+          preview.innerHTML = '⚠️ 無法識別金額，請在文字中包含數字';
+          preview.classList.remove('hidden');
+          Expenses._lastNLParsed = null;
+          return;
+        }
+        Expenses._lastNLParsed = parsed;
+        const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
+        const sign = parsed.type === 'expense' ? '-' : '+';
+        const typeLabel = parsed.type === 'expense' ? '支出' : '收入';
+        preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700 flex items-center justify-between gap-2';
+        preview.innerHTML = `
+          <span>💰 ✓ ${icon} <strong>${parsed.category}</strong> ${typeLabel} <strong>${sign}$${parsed.amount}</strong> · ${parsed.date}${parsed.note ? ' · ' + parsed.note : ''}</span>
+          <button onclick="Expenses._showConfirmForm(Expenses._lastNLParsed)" class="shrink-0 border border-indigo-300 rounded-md px-2 py-0.5 hover:bg-indigo-100 transition-colors">編輯</button>
+        `;
+      } else {
         Expenses._lastNLParsed = null;
-        return;
+        const parsed = NLTodo.parse(text);
+        const priLabel = { high: '🔴 高優先', medium: '🟡 中優先', low: '🟢 低優先' }[parsed.priority];
+        const dueTxt = parsed.dueDate ? ` · 📅 ${parsed.dueDate}` : '';
+        preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-green-50 text-green-700';
+        preview.innerHTML = `✅ ✓ <strong>${parsed.text}</strong>${dueTxt} · ${priLabel}`;
       }
-      Expenses._lastNLParsed = parsed;
-      const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
-      const sign = parsed.type === 'expense' ? '-' : '+';
-      const typeLabel = parsed.type === 'expense' ? '支出' : '收入';
-      preview.className = 'mt-2 text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700 flex items-center justify-between gap-2';
-      preview.innerHTML = `
-        <span>✓ ${icon} <strong>${parsed.category}</strong> ${typeLabel} <strong>${sign}$${parsed.amount}</strong> · ${parsed.date}${parsed.note ? ' · ' + parsed.note : ''}</span>
-        <button onclick="Expenses._showConfirmForm(Expenses._lastNLParsed)" class="shrink-0 border border-indigo-300 rounded-md px-2 py-0.5 hover:bg-indigo-100 transition-colors">編輯</button>
-      `;
       preview.classList.remove('hidden');
     });
 
-    // NL expense submit — saves directly (no confirm form needed unless user clicked 編輯)
-    const submitNLExpense = () => {
-      const input = document.getElementById('exp-nl-input');
+    // Submit (Enter or 記錄 button)
+    const submitShared = () => {
+      const input = document.getElementById('shared-nl-input');
       const text = input.value.trim();
       if (!text) return;
 
-      const parsed = NLExpense.parse(text);
-      if (!parsed) {
-        App.toast('⚠️ 無法識別金額，請在文字中包含數字');
-        return;
+      if (detectKind(text) === 'expense') {
+        const parsed = NLExpense.parse(text);
+        if (!parsed) { App.toast('⚠️ 無法識別金額，請在文字中包含數字'); return; }
+        Expenses.save({
+          id: Storage.genId('exp'),
+          type: parsed.type, amount: parsed.amount, category: parsed.category,
+          date: parsed.date, note: parsed.note, createdAt: Date.now(),
+        });
+        const month = parsed.date.slice(0, 7);
+        if (month !== Expenses.state.month) Expenses.state.month = month;
+        Expenses.render();
+        App._rendered.expenses = true;
+        const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
+        const sign = parsed.type === 'expense' ? '-' : '+';
+        App.toast(`💰 ${icon} ${sign}$${parsed.amount} · ${parsed.category} 已記帳！`);
+      } else {
+        const parsed = NLTodo.parse(text);
+        Todos.save({
+          id: Storage.genId('todo'),
+          text: parsed.text, done: false, priority: parsed.priority,
+          dueDate: parsed.dueDate, createdAt: Date.now(), completedAt: null,
+        });
+        Todos.render();
+        App._rendered.todos = true;
+        const priLabel = { high: '🔴 高', medium: '🟡 中', low: '🟢 低' }[parsed.priority];
+        const dueTxt = parsed.dueDate ? ` · ${parsed.dueDate}` : '';
+        App.toast(`✅ ${parsed.text}${dueTxt} [${priLabel}] 已新增！`);
       }
 
-      Expenses.save({
-        id: Storage.genId('exp'),
-        type: parsed.type, amount: parsed.amount, category: parsed.category,
-        date: parsed.date, note: parsed.note, createdAt: Date.now(),
-      });
-
-      const month = parsed.date.slice(0, 7);
-      if (month !== Expenses.state.month) Expenses.state.month = month;
-
-      Expenses.render();
       input.value = '';
-      document.getElementById('exp-nl-preview').classList.add('hidden');
+      document.getElementById('shared-nl-preview').classList.add('hidden');
       document.getElementById('exp-nl-confirm').classList.add('hidden');
       Expenses._lastNLParsed = null;
-
-      const icon = Expenses.CAT_ICONS[parsed.category] || '📌';
-      const sign = parsed.type === 'expense' ? '-' : '+';
-      App.toast(`${icon} 已記帳！${sign}$${parsed.amount} · ${parsed.category}`);
     };
 
-    document.getElementById('exp-nl-btn').addEventListener('click', submitNLExpense);
-    document.getElementById('exp-nl-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') submitNLExpense();
+    document.getElementById('shared-nl-btn').addEventListener('click', submitShared);
+    document.getElementById('shared-nl-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitShared();
     });
 
-    // NL expense confirm form — cancel
+    // Expense confirm form — cancel
     document.getElementById('exp-confirm-cancel').addEventListener('click', () => {
       document.getElementById('exp-nl-confirm').classList.add('hidden');
     });
 
-    // NL expense confirm form — save
+    // Expense confirm form — save (after 編輯)
     document.getElementById('exp-confirm-save').addEventListener('click', () => {
       const amount = parseFloat(document.getElementById('exp-confirm-amount').value);
       const category = document.getElementById('exp-confirm-category').value;
@@ -993,66 +1019,15 @@ const App = {
       if (!amount || amount <= 0) { App.toast('⚠️ 請輸入有效金額'); return; }
       if (!date) { App.toast('⚠️ 請選擇日期'); return; }
 
-      Expenses.save({
-        id: Storage.genId('exp'),
-        type, amount, category, date, note,
-        createdAt: Date.now(),
-      });
-
+      Expenses.save({ id: Storage.genId('exp'), type, amount, category, date, note, createdAt: Date.now() });
       const month = date.slice(0, 7);
       if (month !== Expenses.state.month) Expenses.state.month = month;
-
       Expenses.render();
-      document.getElementById('exp-nl-input').value = '';
+      document.getElementById('shared-nl-input').value = '';
+      document.getElementById('shared-nl-preview').classList.add('hidden');
       document.getElementById('exp-nl-confirm').classList.add('hidden');
-
       const icon = Expenses.CAT_ICONS[category] || '📌';
-      const sign = type === 'expense' ? '-' : '+';
-      App.toast(`${icon} 已記帳！${sign}$${amount} · ${category}`);
-    });
-
-    // Todo add with NL parsing
-    const submitTodo = () => {
-      const input = document.getElementById('todo-input');
-      const raw = input.value.trim();
-      if (!raw) return;
-
-      const parsed = NLTodo.parse(raw);
-      Todos.save({
-        id: Storage.genId('todo'),
-        text: parsed.text,
-        done: false,
-        priority: parsed.priority,
-        dueDate: parsed.dueDate,
-        createdAt: Date.now(),
-        completedAt: null,
-      });
-      Todos.render();
-      input.value = '';
-      document.getElementById('todo-nl-preview').classList.add('hidden');
-
-      const priLabel = { high: '🔴 高', medium: '🟡 中', low: '🟢 低' }[parsed.priority];
-      const dueTxt = parsed.dueDate ? ` · 到期 ${parsed.dueDate}` : '';
-      App.toast(`✅ 已新增：${parsed.text}${dueTxt} [${priLabel}]`);
-    };
-
-    document.getElementById('todo-add-btn').addEventListener('click', submitTodo);
-    document.getElementById('todo-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') submitTodo();
-    });
-
-    // Todo input real-time NL preview
-    document.getElementById('todo-input').addEventListener('input', e => {
-      const text = e.target.value.trim();
-      const preview = document.getElementById('todo-nl-preview');
-      if (!text) { preview.classList.add('hidden'); return; }
-      const parsed = NLTodo.parse(text);
-      if (!parsed) { preview.classList.add('hidden'); return; }
-      const priLabel = { high: '🔴 高優先', medium: '🟡 中優先', low: '🟢 低優先' }[parsed.priority];
-      const dueTxt = parsed.dueDate ? ` · 📅 ${parsed.dueDate}` : '';
-      preview.className = 'text-xs rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700';
-      preview.innerHTML = `✓ <strong>${parsed.text}</strong>${dueTxt} · ${priLabel}`;
-      preview.classList.remove('hidden');
+      App.toast(`${icon} 已記帳！${type === 'expense' ? '-' : '+'}$${amount} · ${category}`);
     });
 
     // Todo filter pills
