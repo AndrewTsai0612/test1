@@ -871,10 +871,102 @@ const Journal = {
 };
 
 // ──────────────────────────────────────────────────────────────
+//  Home  — dashboard overview
+// ──────────────────────────────────────────────────────────────
+const Home = {
+  WEEKDAYS: ['日','一','二','三','四','五','六'],
+
+  render() {
+    const now = dayjs();
+    const hour = now.hour();
+    const greeting = hour < 5  ? '夜深了，注意休息 🌙'
+                   : hour < 12 ? '早安！美好的一天開始了 ☀️'
+                   : hour < 18 ? '午安！今天過得如何？ 🌤️'
+                   :             '晚安！今天辛苦了 🌙';
+    document.getElementById('home-greeting').textContent = greeting;
+    document.getElementById('home-subdate').textContent =
+      now.format('YYYY年MM月DD日') + ' 星期' + this.WEEKDAYS[now.day()];
+
+    // ── Finance summary ──────────────────────────────────────
+    const { income, expense, net } = Expenses.getSummary();
+    document.getElementById('home-expense').textContent = Expenses.formatAmount(expense);
+    document.getElementById('home-income').textContent  = Expenses.formatAmount(income);
+    const netEl = document.getElementById('home-net');
+    netEl.textContent = (net >= 0 ? '+' : '') + Expenses.formatAmount(net);
+    netEl.style.color = net >= 0 ? '#6366f1' : '#ef4444';
+
+    // Recent 3 transactions
+    const recent = Expenses.getFiltered()
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 3);
+    document.getElementById('home-recent-expenses').innerHTML = recent.map(r => {
+      const icon = Expenses.CAT_ICONS[r.category] || '📌';
+      const sign = r.type === 'expense' ? '-' : '+';
+      const cls  = r.type === 'expense' ? 'text-red-500' : 'text-green-600';
+      return `<div class="flex items-center gap-2">
+        <span class="text-base">${icon}</span>
+        <span class="flex-1 text-xs text-gray-500 truncate">${r.category}${r.note ? ' · ' + r.note : ''}</span>
+        <span class="text-xs font-semibold ${cls}">${sign}${Expenses.formatAmount(r.amount)}</span>
+      </div>`;
+    }).join('');
+
+    // ── Today's todos ────────────────────────────────────────
+    const today = now.format('YYYY-MM-DD');
+    const active = Todos.getAll().filter(t => !t.done);
+    const overdue  = active.filter(t => t.dueDate && t.dueDate < today);
+    const dueToday = active.filter(t => t.dueDate === today);
+    const noDue    = active.filter(t => !t.dueDate).slice(0, 3);
+    const show = [...overdue, ...dueToday, ...noDue].slice(0, 5);
+
+    const sub = active.length === 0 ? '目前沒有待辦事項'
+              : `${active.length} 項進行中${overdue.length > 0 ? '，' + overdue.length + ' 項已過期' : ''}`;
+    document.getElementById('home-todo-subtitle').textContent = sub;
+
+    const listEl  = document.getElementById('home-todo-list');
+    const emptyEl = document.getElementById('home-todo-empty');
+    if (show.length === 0) {
+      listEl.innerHTML = '';
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      listEl.innerHTML = show.map(t => {
+        const isOverdue  = t.dueDate && t.dueDate < today;
+        const isToday    = t.dueDate === today;
+        const badge = isOverdue ? '<span class="text-xs text-red-400 shrink-0 font-medium">過期</span>'
+                    : isToday   ? '<span class="text-xs text-amber-500 shrink-0">今天</span>'
+                    : '';
+        return `<div class="flex items-center gap-2 py-0.5">
+          <div class="todo-checkbox shrink-0" onclick="Todos.toggle('${t.id}'); Home.render()"></div>
+          <div class="priority-dot priority-${t.priority} shrink-0"></div>
+          <span class="text-sm flex-1 truncate">${t.text}</span>
+          ${badge}
+        </div>`;
+      }).join('');
+    }
+
+    // ── Today's journal ──────────────────────────────────────
+    const entry = Journal.getByDate(today);
+    const journalEl = document.getElementById('home-journal-preview');
+    if (entry) {
+      const mood = Journal.MOODS.find(m => m.key === entry.mood);
+      const preview = entry.content.length > 80
+        ? entry.content.slice(0, 80) + '...'
+        : entry.content;
+      journalEl.innerHTML = `<div class="flex items-start gap-2">
+        ${mood ? `<span class="text-xl shrink-0">${mood.emoji}</span>` : ''}
+        <p class="text-sm text-gray-600 leading-relaxed">${preview}</p>
+      </div>`;
+    } else {
+      journalEl.innerHTML = '<p class="text-sm text-gray-400">今天還沒有日記，點右上角開始記錄 ✍️</p>';
+    }
+  },
+};
+
+// ──────────────────────────────────────────────────────────────
 //  App  — init & tab switching
 // ──────────────────────────────────────────────────────────────
 const App = {
-  activeTab: 'expenses',
+  activeTab: 'home',
   _rendered: { expenses: false, todos: false, journal: false },
 
   toast(msg, duration = 2500) {
@@ -1070,11 +1162,11 @@ const App = {
     });
 
     // Initial render
-    this.switchTab('expenses');
+    this.switchTab('home');
   },
 
   switchTab(tab) {
-    const tabs = ['expenses', 'todos', 'journal'];
+    const tabs = ['home', 'expenses', 'todos', 'journal'];
     tabs.forEach(t => {
       const section = document.getElementById(`tab-${t}`);
       section.classList.toggle('hidden', t !== tab);
@@ -1084,8 +1176,10 @@ const App = {
     });
     this.activeTab = tab;
 
-    // Lazy render
-    if (!this._rendered[tab]) {
+    if (tab === 'home') {
+      // Always re-render home so it stays fresh
+      Home.render();
+    } else if (!this._rendered[tab]) {
       this._rendered[tab] = true;
       if (tab === 'expenses') Expenses.render();
       if (tab === 'todos')    Todos.render();

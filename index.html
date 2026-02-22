@@ -35,6 +35,9 @@
 
     <!-- Tab Nav (desktop: top, mobile: bottom) -->
     <nav id="tab-nav" class="bg-white border-b hidden md:flex">
+      <button data-tab="home" class="tab-btn flex-1 py-3 text-sm font-medium flex flex-col items-center gap-1">
+        <span class="text-lg">🏠</span>總覽
+      </button>
       <button data-tab="expenses" class="tab-btn flex-1 py-3 text-sm font-medium flex flex-col items-center gap-1">
         <span class="text-lg">💰</span>記帳
       </button>
@@ -102,8 +105,64 @@
         </div>
       </div>
 
+      <!-- ===== 總覽 Section ===== -->
+      <section id="tab-home" class="p-4 space-y-4">
+
+        <!-- Greeting Banner -->
+        <div class="bg-gradient-to-br from-indigo-500 to-purple-500 rounded-2xl p-5 text-white">
+          <p id="home-greeting" class="text-lg font-bold"></p>
+          <p id="home-subdate" class="text-sm opacity-80 mt-0.5"></p>
+        </div>
+
+        <!-- Finance Summary -->
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-semibold text-gray-700">💰 本月財務</p>
+            <button onclick="App.switchTab('expenses')" class="text-xs text-indigo-500 hover:underline">詳細 ›</button>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <div class="text-center bg-red-50 rounded-lg py-2">
+              <p class="text-xs text-red-400 font-medium">支出</p>
+              <p id="home-expense" class="text-sm font-bold text-red-500 mt-0.5">$0</p>
+            </div>
+            <div class="text-center bg-green-50 rounded-lg py-2">
+              <p class="text-xs text-green-500 font-medium">收入</p>
+              <p id="home-income" class="text-sm font-bold text-green-600 mt-0.5">$0</p>
+            </div>
+            <div class="text-center bg-indigo-50 rounded-lg py-2">
+              <p class="text-xs text-indigo-400 font-medium">淨額</p>
+              <p id="home-net" class="text-sm font-bold text-indigo-600 mt-0.5">$0</p>
+            </div>
+          </div>
+          <div id="home-recent-expenses" class="space-y-1.5"></div>
+        </div>
+
+        <!-- Today's Todos -->
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <p class="text-sm font-semibold text-gray-700">✅ 今日待辦</p>
+              <p id="home-todo-subtitle" class="text-xs text-gray-400 mt-0.5"></p>
+            </div>
+            <button onclick="App.switchTab('todos')" class="text-xs text-indigo-500 hover:underline">全部 ›</button>
+          </div>
+          <div id="home-todo-list" class="space-y-1.5"></div>
+          <p id="home-todo-empty" class="text-center py-3 text-gray-400 text-sm hidden">今天沒有待辦事項 🎉</p>
+        </div>
+
+        <!-- Today's Journal -->
+        <div class="bg-white rounded-xl p-4 shadow-sm">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-sm font-semibold text-gray-700">📖 今日日記</p>
+            <button onclick="App.switchTab('journal')" class="text-xs text-indigo-500 hover:underline">前往日記 ›</button>
+          </div>
+          <div id="home-journal-preview"></div>
+        </div>
+
+      </section>
+
       <!-- ===== 記帳 Section ===== -->
-      <section id="tab-expenses" class="p-4 space-y-4">
+      <section id="tab-expenses" class="p-4 space-y-4 hidden">
 
         <!-- Summary Cards -->
         <div class="grid grid-cols-3 gap-3">
@@ -199,6 +258,9 @@
 
     <!-- Mobile Bottom Tab Nav -->
     <nav id="tab-nav-mobile" class="md:hidden fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t flex mobile-nav">
+      <button data-tab="home" class="tab-btn flex-1 py-2 text-xs font-medium flex flex-col items-center gap-0.5">
+        <span class="text-xl">🏠</span>總覽
+      </button>
       <button data-tab="expenses" class="tab-btn flex-1 py-2 text-xs font-medium flex flex-col items-center gap-0.5">
         <span class="text-xl">💰</span>記帳
       </button>
