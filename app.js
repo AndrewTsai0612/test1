@@ -120,6 +120,7 @@ const Expenses = {
     if (idx >= 0) all[idx] = record;
     else all.unshift(record);
     Storage.set('expenses', all);
+    if (typeof Home !== 'undefined') Home.render();
   },
 
   delete(id) {
@@ -373,6 +374,7 @@ const Todos = {
     if (idx >= 0) all[idx] = todo;
     else all.unshift(todo);
     Storage.set('todos', all);
+    if (typeof Home !== 'undefined') Home.render();
   },
 
   delete(id) {
@@ -668,6 +670,7 @@ const Journal = {
       all.unshift({ ...entry, createdAt: Date.now(), updatedAt: Date.now() });
     }
     Storage.set('journal', all);
+    if (typeof Home !== 'undefined') Home.render();
   },
 
   delete(id) {
