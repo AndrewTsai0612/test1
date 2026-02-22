@@ -413,25 +413,80 @@ const Todos = {
   },
 
   render() {
-    const items = this.getSorted(this.getFiltered());
-    const list = document.getElementById('todo-list');
+    const allItems = this.getFiltered();
+    const list  = document.getElementById('todo-list');
     const empty = document.getElementById('todo-empty');
 
-    if (items.length === 0) {
+    if (allItems.length === 0) {
       list.innerHTML = '';
       empty.classList.remove('hidden');
       return;
     }
     empty.classList.add('hidden');
 
-    const frag = document.createDocumentFragment();
-    items.forEach(t => {
-      const div = document.createElement('div');
-      div.innerHTML = this._renderItem(t);
-      frag.appendChild(div.firstElementChild);
+    const active = allItems.filter(t => !t.done);
+    const done   = allItems.filter(t =>  t.done);
+
+    // "已完成" filter — flat list, no date grouping needed
+    if (this.state.filter === 'done') {
+      list.innerHTML = `<div class="space-y-2">${done.map(t => this._renderItem(t)).join('')}</div>`;
+      return;
+    }
+
+    const today     = dayjs().format('YYYY-MM-DD');
+    const tomorrow  = dayjs().add(1, 'day').format('YYYY-MM-DD');
+    const endOfWeek = dayjs().endOf('week').format('YYYY-MM-DD');
+
+    const groups = [
+      { key: 'overdue',  label: '已過期', icon: '⚠️', color: '#ef4444', items: [] },
+      { key: 'today',    label: '今天',   icon: '☀️', color: '#f59e0b', items: [] },
+      { key: 'tomorrow', label: '明天',   icon: '🌅', color: '#3b82f6', items: [] },
+      { key: 'thisWeek', label: '本週',   icon: '📅', color: '#8b5cf6', items: [] },
+      { key: 'later',    label: '之後',   icon: '🔮', color: '#6b7280', items: [] },
+      { key: 'noDue',    label: '無期限', icon: '📝', color: '#9ca3af', items: [] },
+    ];
+
+    // Sort by priority first, then distribute into date buckets
+    const sortedActive = [...active].sort((a, b) => {
+      const po = (this.PRIORITY_ORDER[a.priority] || 1) - (this.PRIORITY_ORDER[b.priority] || 1);
+      return po !== 0 ? po : b.createdAt - a.createdAt;
     });
-    list.innerHTML = '';
-    list.appendChild(frag);
+
+    sortedActive.forEach(t => {
+      if (!t.dueDate)             { groups[5].items.push(t); return; }
+      if (t.dueDate < today)      { groups[0].items.push(t); return; }
+      if (t.dueDate === today)    { groups[1].items.push(t); return; }
+      if (t.dueDate === tomorrow) { groups[2].items.push(t); return; }
+      if (t.dueDate <= endOfWeek) { groups[3].items.push(t); return; }
+      groups[4].items.push(t);
+    });
+
+    let html = '';
+    groups.forEach(g => {
+      if (g.items.length === 0) return;
+      html += `
+        <div class="todo-group">
+          <div class="todo-group-header" style="color:${g.color}">
+            <span>${g.icon}</span><span>${g.label}</span>
+            <span class="todo-group-count">${g.items.length}</span>
+          </div>
+          <div class="space-y-2">${g.items.map(t => this._renderItem(t)).join('')}</div>
+        </div>`;
+    });
+
+    // Completed section at the bottom (only in "all" filter)
+    if (this.state.filter === 'all' && done.length > 0) {
+      html += `
+        <div class="todo-group">
+          <div class="todo-group-header" style="color:#9ca3af">
+            <span>✅</span><span>已完成</span>
+            <span class="todo-group-count">${done.length}</span>
+          </div>
+          <div class="space-y-2 opacity-60">${done.map(t => this._renderItem(t)).join('')}</div>
+        </div>`;
+    }
+
+    list.innerHTML = html || `<div class="text-center py-10 text-gray-400 text-sm">🎉 所有任務都完成了！</div>`;
   },
 
   _renderItem(t) {

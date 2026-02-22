@@ -61,6 +61,32 @@
   to   { transform: translateY(0);    opacity: 1; }
 }
 
+/* ===== Todo Date Groups ===== */
+.todo-group {
+  margin-bottom: 1.25rem;
+}
+
+.todo-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.todo-group-count {
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 9999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
 /* ===== Todo Items ===== */
 .todo-item {
   background: white;
