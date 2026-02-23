@@ -10,6 +10,7 @@ const Storage = {
     expenses: 'pla_expenses',
     todos:    'pla_todos',
     journal:  'pla_journal',
+    ledgers:  'pla_ledgers',
   },
 
   get(key) {
@@ -80,11 +81,50 @@ const Modal = {
 };
 
 // ──────────────────────────────────────────────────────────────
+//  Ledgers  — account books management
+// ──────────────────────────────────────────────────────────────
+const Ledgers = {
+  getAll() { return Storage.get('ledgers'); },
+
+  save(ledger) {
+    const all = this.getAll();
+    const idx = all.findIndex(l => l.id === ledger.id);
+    if (idx >= 0) all[idx] = ledger;
+    else all.push(ledger);
+    Storage.set('ledgers', all);
+  },
+
+  delete(id) {
+    Storage.set('ledgers', this.getAll().filter(l => l.id !== id));
+    // Remove all expenses belonging to this ledger
+    const raw = JSON.parse(localStorage.getItem('pla_expenses')) || [];
+    localStorage.setItem('pla_expenses', JSON.stringify(raw.filter(r => r.ledgerId !== id)));
+  },
+
+  // Ensure at least one ledger exists; migrate old expenses that lack ledgerId.
+  // Returns the id of the first (default) ledger.
+  ensureDefault() {
+    let all = this.getAll();
+    if (all.length === 0) {
+      const def = { id: Storage.genId('led'), name: '日常', createdAt: Date.now() };
+      this.save(def);
+      all = [def];
+    }
+    const defaultId = all[0].id;
+    // Migrate existing expenses that have no ledgerId
+    const raw = JSON.parse(localStorage.getItem('pla_expenses')) || [];
+    const migrated = raw.map(r => r.ledgerId ? r : { ...r, ledgerId: defaultId });
+    localStorage.setItem('pla_expenses', JSON.stringify(migrated));
+    return defaultId;
+  },
+};
+
+// ──────────────────────────────────────────────────────────────
 //  Expenses
 // ──────────────────────────────────────────────────────────────
 const Expenses = {
   _chart: null,
-  state: { month: dayjs().format('YYYY-MM') },
+  state: { month: dayjs().format('YYYY-MM'), ledgerId: null },
 
   CAT_EXPENSE: ['餐飲', '交通', '購物', '娛樂', '醫療', '住房', '教育', '其他'],
   CAT_INCOME:  ['薪水', '兼職', '投資', '禮金', '其他'],
@@ -98,7 +138,13 @@ const Expenses = {
     '#8b5cf6','#ec4899','#14b8a6',
   ],
 
-  getAll() { return Storage.get('expenses'); },
+  _getAllRaw() { return Storage.get('expenses'); },
+
+  getAll() {
+    const all = this._getAllRaw();
+    if (!this.state.ledgerId) return all;
+    return all.filter(r => r.ledgerId === this.state.ledgerId);
+  },
 
   getFiltered() {
     return this.getAll().filter(r => r.date.startsWith(this.state.month));
@@ -115,7 +161,7 @@ const Expenses = {
   },
 
   save(record) {
-    const all = this.getAll();
+    const all = this._getAllRaw();
     const idx = all.findIndex(r => r.id === record.id);
     if (idx >= 0) all[idx] = record;
     else all.unshift(record);
@@ -124,7 +170,7 @@ const Expenses = {
   },
 
   delete(id) {
-    Storage.set('expenses', this.getAll().filter(r => r.id !== id));
+    Storage.set('expenses', this._getAllRaw().filter(r => r.id !== id));
   },
 
   getChartData() {
@@ -190,7 +236,78 @@ const Expenses = {
     });
   },
 
+  renderLedgerTabs() {
+    const ledgers = Ledgers.getAll();
+    const bar = document.getElementById('ledger-tab-bar');
+    if (!bar) return;
+    bar.innerHTML = ledgers.map(l => {
+      const active = l.id === this.state.ledgerId;
+      return `<button
+        onclick="Expenses.switchLedger('${l.id}')"
+        class="ledger-tab ${active ? 'ledger-tab-active' : 'ledger-tab-inactive'}">
+        ${l.name}
+        ${active ? `<span class="ledger-tab-edit" onclick="event.stopPropagation();Expenses.openLedgerMenu('${l.id}')">⋯</span>` : ''}
+      </button>`;
+    }).join('') +
+    `<button onclick="Expenses.openNewLedger()" class="ledger-tab ledger-tab-add">＋ 新增</button>`;
+  },
+
+  switchLedger(id) {
+    this.state.ledgerId = id;
+    this.render();
+  },
+
+  openNewLedger() {
+    Modal.open({
+      title: '新增帳本',
+      bodyHTML: `<div class="form-group">
+        <label class="form-label">帳本名稱</label>
+        <input id="ledger-name-input" type="text" class="form-input" placeholder="例如：旅遊、工作、家庭" maxlength="20" />
+      </div>`,
+      onSubmit: () => {
+        const name = document.getElementById('ledger-name-input').value.trim();
+        if (!name) { alert('請輸入帳本名稱'); return; }
+        const ledger = { id: Storage.genId('led'), name, createdAt: Date.now() };
+        Ledgers.save(ledger);
+        this.state.ledgerId = ledger.id;
+        this.render();
+        Modal.close();
+        App.toast(`📒 帳本「${name}」已建立！`);
+      },
+    });
+  },
+
+  openLedgerMenu(id) {
+    const ledger = Ledgers.getAll().find(l => l.id === id);
+    if (!ledger) return;
+    const canDelete = Ledgers.getAll().length > 1;
+    Modal.open({
+      title: '帳本設定',
+      bodyHTML: `<div class="form-group">
+        <label class="form-label">帳本名稱</label>
+        <input id="ledger-name-input" type="text" class="form-input" value="${ledger.name}" maxlength="20" />
+      </div>`,
+      onDelete: canDelete ? () => {
+        if (!confirm(`確定要刪除「${ledger.name}」帳本及其所有記錄嗎？`)) return;
+        Ledgers.delete(id);
+        this.state.ledgerId = Ledgers.getAll()[0].id;
+        this.render();
+        Modal.close();
+        App.toast('🗑️ 帳本已刪除');
+      } : null,
+      onSubmit: () => {
+        const name = document.getElementById('ledger-name-input').value.trim();
+        if (!name) { alert('請輸入帳本名稱'); return; }
+        Ledgers.save({ ...ledger, name });
+        this.render();
+        Modal.close();
+        App.toast(`✏️ 帳本已更名為「${name}」`);
+      },
+    });
+  },
+
   render() {
+    this.renderLedgerTabs();
     this.buildMonthOptions();
 
     const { income, expense, net } = this.getSummary();
@@ -285,6 +402,7 @@ const Expenses = {
 
         this.save({
           id: record ? record.id : Storage.genId('exp'),
+          ledgerId: record ? record.ledgerId : this.state.ledgerId,
           type: t,
           amount,
           category,
@@ -984,6 +1102,9 @@ const App = {
     // Set header date
     document.getElementById('header-date').textContent = dayjs().format('YYYY年MM月DD日');
 
+    // Ensure at least one ledger exists and set the active ledger
+    Expenses.state.ledgerId = Ledgers.ensureDefault();
+
     // Wire tab nav (both desktop and mobile)
     ['tab-nav', 'tab-nav-mobile'].forEach(navId => {
       const nav = document.getElementById(navId);
@@ -1062,6 +1183,7 @@ const App = {
         if (!parsed) { App.toast('⚠️ 無法識別金額，請在文字中包含數字'); return; }
         Expenses.save({
           id: Storage.genId('exp'),
+          ledgerId: Expenses.state.ledgerId,
           type: parsed.type, amount: parsed.amount, category: parsed.category,
           date: parsed.date, note: parsed.note, createdAt: Date.now(),
         });
@@ -1116,7 +1238,7 @@ const App = {
       if (!amount || amount <= 0) { App.toast('⚠️ 請輸入有效金額'); return; }
       if (!date) { App.toast('⚠️ 請選擇日期'); return; }
 
-      Expenses.save({ id: Storage.genId('exp'), type, amount, category, date, note, createdAt: Date.now() });
+      Expenses.save({ id: Storage.genId('exp'), ledgerId: Expenses.state.ledgerId, type, amount, category, date, note, createdAt: Date.now() });
       const month = date.slice(0, 7);
       if (month !== Expenses.state.month) Expenses.state.month = month;
       Expenses.render();

@@ -339,6 +339,67 @@ textarea.form-input {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
+/* ===== Ledger Tab Bar ===== */
+#ledger-tab-bar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#ledger-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.ledger-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.ledger-tab-active {
+  background: #6366f1;
+  color: white;
+}
+
+.ledger-tab-inactive {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.ledger-tab-inactive:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.ledger-tab-add {
+  background: transparent;
+  color: #6366f1;
+  border: 1.5px dashed #a5b4fc !important;
+}
+
+.ledger-tab-add:hover {
+  background: #eef2ff;
+}
+
+.ledger-tab-edit {
+  font-size: 15px;
+  opacity: 0.75;
+  line-height: 1;
+  padding: 0 1px;
+}
+
+.ledger-tab-edit:hover {
+  opacity: 1;
+}
+
 /* ===== Misc ===== */
 .section-label {
   font-size: 0.75rem;
